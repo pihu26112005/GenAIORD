@@ -81,7 +81,7 @@ def main(args):
     
     # 4. CRITICAL: PASS mu_01 AND gamma_penalty TO THE SAMPLER
     # gamma_penalty = 0.1 # Tuning parameter for the strength of repulsion
-    gamma_penalty = 0.1
+    gamma_penalty = 0.0
     
     x_next = sample(model.denoise_fn_D, num_samples, sample_dim, label, mu_01=mu_01, gamma_penalty=gamma_penalty, device=device)
     x_next = x_next * 2 + mean.to(device)

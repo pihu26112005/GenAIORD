@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import argparse
 import warnings
@@ -12,7 +12,7 @@ from tqdm import tqdm
 import json
 import time
 
-from tabsyn.vae.model import Model_VAE, Encoder_model, Decoder_model
+from tabsyn.vae.model import Model_VAE, Encoder_model, Decoder_model, LatentStructuringLoss
 from utils_train import preprocess, TabularDataset
 
 warnings.filterwarnings('ignore')
@@ -88,8 +88,15 @@ def main(args):
     X_train_num, X_test_num = torch.tensor(X_train_num).float(), torch.tensor(X_test_num).float()
     X_train_cat, X_test_cat =  torch.tensor(X_train_cat), torch.tensor(X_test_cat)
 
-
-    train_data = TabularDataset(X_train_num.float(), X_train_cat)
+    # --- NEW: LOAD TARGET LABELS ---
+    y_train = np.load(f'{data_dir}/y_train.npy').reshape(-1)
+    y_test = np.load(f'{data_dir}/y_test.npy').reshape(-1)
+    
+    y_train_tensor = torch.tensor(y_train).float()
+    y_test_tensor = torch.tensor(y_test).float().to(device)
+    
+    # train_data = TabularDataset(X_train_num.float(), X_train_cat)
+    train_data = TensorDataset(X_train_num.float(), X_train_cat, y_train_tensor)
 
     X_test_num = X_test_num.float().to(device)
     X_test_cat = X_test_cat.to(device)
@@ -114,6 +121,14 @@ def main(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=WD)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.95, patience=10)
 
+    # --- NEW: INITIALIZE STRUCTURING LOSS ---
+    # The latent dimension in CTabSyn is (num_numerical + num_categorical) * D_TOKEN
+    latent_dim_flat = (d_numerical + len(categories)) * D_TOKEN
+    
+    structuring_criterion = LatentStructuringLoss(latent_dim=latent_dim_flat).to(device)
+    lambda_struct = 0.2528  # Hyperparameter: Strength of the structuring magnet
+    # lambda_struct = args.lambda_struct
+    
     num_epochs = 4000
     best_train_loss = float('inf')
 
@@ -132,19 +147,48 @@ def main(args):
 
         curr_count = 0
 
-        for batch_num, batch_cat in pbar:
+        # for batch_num, batch_cat in pbar:
+        #     model.train()
+        #     optimizer.zero_grad()
+
+        #     batch_num = batch_num.to(device)
+        #     batch_cat = batch_cat.to(device)
+
+        #     Recon_X_num, Recon_X_cat, mu_z, std_z = model(batch_num, batch_cat)
+        
+        #     loss_mse, loss_ce, loss_kld, train_acc = compute_loss(batch_num, batch_cat, Recon_X_num, Recon_X_cat, mu_z, std_z)
+
+        #     loss = loss_mse + loss_ce + beta * loss_kld
+        #     ##### add loss here
+        #     loss.backward()
+        #     optimizer.step()
+
+        #     batch_length = batch_num.shape[0]
+        #     curr_count += batch_length
+        #     curr_loss_multi += loss_ce.item() * batch_length
+        #     curr_loss_gauss += loss_mse.item() * batch_length
+        #     curr_loss_kl    += loss_kld.item() * batch_length
+        
+        for batch_num, batch_cat, batch_y in pbar:
             model.train()
             optimizer.zero_grad()
 
             batch_num = batch_num.to(device)
             batch_cat = batch_cat.to(device)
+            batch_y = batch_y.to(device) # Move labels to GPU
 
             Recon_X_num, Recon_X_cat, mu_z, std_z = model(batch_num, batch_cat)
         
             loss_mse, loss_ce, loss_kld, train_acc = compute_loss(batch_num, batch_cat, Recon_X_num, Recon_X_cat, mu_z, std_z)
 
-            loss = loss_mse + loss_ce + beta * loss_kld
-            ##### add loss here
+            # --- NEW: APPLY LATENT STRUCTURING LOSS ---
+            # Flatten mu_z from [batch, cols, token_dim] to [batch, latent_dim]
+            mu_z_flat = mu_z.view(mu_z.shape[0], -1)
+            struct_loss = structuring_criterion(mu_z_flat, batch_y)
+            
+            # Add struct_loss scaled by lambda_struct
+            loss = loss_mse + loss_ce + beta * loss_kld + (lambda_struct * struct_loss)
+            
             loss.backward()
             optimizer.step()
 
@@ -167,7 +211,15 @@ def main(args):
             Recon_X_num, Recon_X_cat, mu_z, std_z = model(X_test_num, X_test_cat)
 
             val_mse_loss, val_ce_loss, val_kl_loss, val_acc = compute_loss(X_test_num, X_test_cat, Recon_X_num, Recon_X_cat, mu_z, std_z)
-            val_loss = val_mse_loss.item() * 0 + val_ce_loss.item()    
+            
+            # --- NEW: VALIDATION STRUCTURING LOSS ---
+            mu_z_flat_val = mu_z.view(mu_z.shape[0], -1)
+            val_struct_loss = structuring_criterion(mu_z_flat_val, y_test_tensor)
+            
+            # val_loss = val_mse_loss.item() * 0 + val_ce_loss.item()    
+            
+            # Include struct_loss in validation monitoring
+            val_loss = val_mse_loss.item() * 0 + val_ce_loss.item() + (lambda_struct * val_struct_loss.item())
 
             scheduler.step(val_loss)
             new_lr = optimizer.param_groups[0]['lr']
@@ -222,6 +274,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_beta', type=float, default=1e-2, help='Initial Beta.')
     parser.add_argument('--min_beta', type=float, default=1e-5, help='Minimum Beta.')
     parser.add_argument('--lambd', type=float, default=0.7, help='Decay of Beta.')
+    # parser.add_argument('--lambda_struct', type=float, default=0.5, help='Strength of Latent Structuring')
 
     args = parser.parse_args()
 
