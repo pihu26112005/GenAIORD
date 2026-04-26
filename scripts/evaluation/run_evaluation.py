@@ -70,6 +70,10 @@ def main():
         "Proposed_CFG": {
             "min": f"{base_path}/synthetic/synthetic_minority_cfg.csv",
             "maj": f"{base_path}/synthetic/synthetic_majority_cfg.csv"
+        },
+        "TabDDPM": {
+            "min": f"{base_path}/synthetic/synthetic_minority_tabddpm.csv",
+            "maj": f"{base_path}/synthetic/synthetic_majority_tabddpm.csv"
         }
     }
 
