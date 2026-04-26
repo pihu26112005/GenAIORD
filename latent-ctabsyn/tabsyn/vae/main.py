@@ -125,8 +125,15 @@ def main(args):
     # The latent dimension in CTabSyn is (num_numerical + num_categorical) * D_TOKEN
     latent_dim_flat = (d_numerical + len(categories)) * D_TOKEN
     
-    structuring_criterion = LatentStructuringLoss(latent_dim=latent_dim_flat).to(device)
-    lambda_struct = 0.2528  # Hyperparameter: Strength of the structuring magnet
+    # PUT YOUR OPTUNA MARGIN HERE (Replace 2.0 with your actual Optuna result)
+    margin = 1.042172449034326
+    lambda_struct = 0.9845654236336462  # Hyper parameter of sturcutring magnet
+
+    structuring_criterion = LatentStructuringLoss(
+        latent_dim=latent_dim_flat, 
+        alpha=0.90,              # Keeps the centroid tracking highly responsive
+        margin=margin       # Forces the VAE to use your mathematically optimal moat
+    ).to(device)
     # lambda_struct = args.lambda_struct
     
     num_epochs = 4000
@@ -219,9 +226,10 @@ def main(args):
             # val_loss = val_mse_loss.item() * 0 + val_ce_loss.item()    
             
             # Include struct_loss in validation monitoring
-            val_loss = val_mse_loss.item() * 0 + val_ce_loss.item() + (lambda_struct * val_struct_loss.item())
+            step_loss = val_mse_loss.item() * 0 + val_ce_loss.item() + (lambda_struct * val_struct_loss.item()) #Removes mse term interntionally because of its instability
+            val_loss = val_mse_loss.item() + val_ce_loss.item() + (lambda_struct * val_struct_loss.item())
 
-            scheduler.step(val_loss)
+            scheduler.step(step_loss)
             new_lr = optimizer.param_groups[0]['lr']
 
             if new_lr != current_lr:
@@ -246,24 +254,52 @@ def main(args):
     end_time = time.time()
     print('Training time: {:.4f} mins'.format((end_time - start_time)/60))
     
-    # Saving latent embeddings
+    # --- CRITICAL FIX: REVERT TO BEST WEIGHTS ---
+    print("Loading best model weights before extracting latent space...")
+    model.load_state_dict(torch.load(model_save_path))
+    
+   # =====================================================================
+    # 1. SAVE LAST EPOCH EMBEDDINGS (Before reverting weights)
+    # =====================================================================
+    print("Extracting latent space from the LAST epoch...")
     with torch.no_grad():
+        # Update pre_encoder/decoder with the current (last) model weights
         pre_encoder.load_weights(model)
         pre_decoder.load_weights(model)
 
-        torch.save(pre_encoder.state_dict(), encoder_save_path)
-        torch.save(pre_decoder.state_dict(), decoder_save_path)
-
+        # Move data to device
         X_train_num = X_train_num.to(device)
         X_train_cat = X_train_cat.to(device)
 
-        print('Successfully load and save the model!')
+        # Generate and save last epoch embeddings
+        train_z_last = pre_encoder(X_train_num, X_train_cat).detach().cpu().numpy()
+        np.save(f'{ckpt_dir}/train_z.npy', train_z_last)
+        print('Successfully saved LAST epoch embeddings (train_z.npy)!')
+        
+        # Optional: Save the last epoch's encoder/decoder weights just in case
+        torch.save(pre_encoder.state_dict(), f'{ckpt_dir}/encoder_last.pt')
+        torch.save(pre_decoder.state_dict(), f'{ckpt_dir}/decoder_last.pt')
 
-        train_z = pre_encoder(X_train_num, X_train_cat).detach().cpu().numpy()
+    # =====================================================================
+    # 2. REVERT TO BEST WEIGHTS AND SAVE BEST EMBEDDINGS
+    # =====================================================================
+    print("Loading best model weights before extracting latent space...")
+    model.load_state_dict(torch.load(model_save_path))
+    
+    with torch.no_grad():
+        # Update pre_encoder/decoder with the BEST model weights
+        pre_encoder.load_weights(model)
+        pre_decoder.load_weights(model)
 
-        np.save(f'{ckpt_dir}/train_z.npy', train_z)
+        # Save the best encoder/decoder weights
+        torch.save(pre_encoder.state_dict(), encoder_save_path)
+        torch.save(pre_decoder.state_dict(), decoder_save_path)
+        print('Successfully loaded and saved the BEST model components!')
 
-        print('Successfully save pretrained embeddings in disk!')
+        # Generate and save best epoch embeddings
+        train_z_best = pre_encoder(X_train_num, X_train_cat).detach().cpu().numpy()
+        np.save(f'{ckpt_dir}/train_z_best.npy', train_z_best)
+        print('Successfully saved BEST pretrained embeddings (train_z_best.npy)!')
 
 if __name__ == '__main__':
 

@@ -57,9 +57,13 @@ def train_vae_for_optuna(trial, args):
     data_dir = f'data/{dataname}'
     device = args.device
 
-    # 1. Suggest a lambda value to test
-    lambda_struct = trial.suggest_float('lambda_struct', 0.1, 1.5)
-    print(f"\n--- Testing lambda_struct = {lambda_struct:.3f} ---")
+    # 1. Suggest lambda and margin values
+    lambda_struct = trial.suggest_float('lambda_struct', 0.1, 2.0)
+    # FIX: Since we use mean-scaled distance, expected distance is ~1.4. 
+    # A boundary between 1.0 and 5.0 is the correct scale.
+    margin_val = trial.suggest_float('margin', 1.0, 5.0) 
+    
+    print(f"\n--- Testing lambda = {lambda_struct:.3f} | margin = {margin_val:.3f} ---")
 
     with open(f'{data_dir}/info.json', 'r') as f:
         info = json.load(f)
@@ -69,8 +73,7 @@ def train_vae_for_optuna(trial, args):
     X_train_num, X_test_num = X_num
     X_train_cat, X_test_cat = X_cat
 
-    # --- OBTAIN y_train DIRECTLY FROM CSV ---
-    # CTabSyn's process_dataset saves these files. We extract the target ('income' for adult)
+    # Obtain y_train directly from CSV
     target_col = 'income' 
     train_df = pd.read_csv(f'{data_dir}/train.csv')
     y_train = train_df[target_col].values
@@ -88,9 +91,15 @@ def train_vae_for_optuna(trial, args):
     optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=WD)
 
     latent_dim_flat = (d_numerical + len(categories)) * D_TOKEN
-    structuring_criterion = LatentStructuringLoss(latent_dim=latent_dim_flat).to(device)
+    
+    # FIX: Explicitly pass the Optuna 'margin_val' and our optimized 'alpha' into the Loss Module
+    structuring_criterion = LatentStructuringLoss(
+        latent_dim=latent_dim_flat, 
+        margin=margin_val, 
+        alpha=0.90
+    ).to(device)
 
-    # 4. Training Loop (Truncated for Optuna)
+    # 4. Training Loop
     model.train()
     beta = 1e-2
 
@@ -126,7 +135,6 @@ def train_vae_for_optuna(trial, args):
     pre_encoder.load_weights(model)
     with torch.no_grad():
         train_z = pre_encoder(X_train_num_t.to(device), X_train_cat_t.to(device)).detach().cpu().numpy()
-        # Flatten train_z for the Logistic Regression
         train_z_flat = train_z.reshape(train_z.shape[0], -1)
 
     # 6. Evaluate Separation
@@ -134,9 +142,9 @@ def train_vae_for_optuna(trial, args):
     print(f"Result: Recon Penalty = {final_recon_loss:.4f} | Separation F1 = {separation_f1:.4f}")
 
     # 7. Composite Score
-    # We want to MAXIMIZE F1, but MINIMIZE Reconstruction Loss.
-    # Optuna minimizes by default, so we subtract F1 (scaled so it matters).
-    composite_score = final_recon_loss - (5.0 * separation_f1)
+    # FIX: Reduced the F1 multiplier from 5.0 to 2.0 to prevent Optuna from entirely abandoning 
+    # the reconstruction loss just to gain a tiny fraction of separation F1.
+    composite_score = final_recon_loss - (2.0 * separation_f1)
     
     return composite_score
 
@@ -150,8 +158,10 @@ if __name__ == '__main__':
 
     # Run the Optuna Study
     study = optuna.create_study(direction='minimize')
-    study.optimize(lambda trial: train_vae_for_optuna(trial, args), n_trials=15)
+    study.optimize(lambda trial: train_vae_for_optuna(trial, args), n_trials=30)
 
+    # FIX: Print both of the winning hyperparameters
     print("\n" + "="*50)
-    print(f"BEST LAMBDA FOUND: {study.best_params['lambda_struct']:.4f}")
+    print(f"BEST LAMBDA: {study.best_params['lambda_struct']:.4f}")
+    print(f"BEST MARGIN: {study.best_params['margin']:.4f}")
     print("="*50)

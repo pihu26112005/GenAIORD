@@ -389,14 +389,58 @@ class Decoder_model(nn.Module):
 
         return x_hat_num, x_hat_cat
     
+# class LatentStructuringLoss(nn.Module):
+#     def __init__(self, latent_dim, alpha=0.99):
+#         super().__init__()
+#         self.alpha = alpha
+        
+#         # Use buffers so they move to the correct GPU automatically and save in state_dict
+#         self.register_buffer('mu_1', torch.zeros(latent_dim))
+#         self.register_buffer('sigma_sq', torch.ones(1))
+#         self.is_initialized = False
+
+#     def forward(self, z, y):
+#         """
+#         z: Latent encodings from the VAE (batch_size, latent_dim)
+#         y: Binary labels (batch_size, 1) - 1 for minority, 0 for majority
+#         """
+#         y = y.float().squeeze()
+#         minority_mask = (y == 1.0)
+
+#         # Update EMA Centroid and Variance (only if batch has minority points)
+#         if minority_mask.sum() > 0:
+#             batch_mu_1 = z[minority_mask].mean(dim=0).detach() # Detach to prevent graph cycles
+#             batch_dist_sq = torch.sum((z[minority_mask] - batch_mu_1)**2, dim=1)
+#             batch_sigma_sq = batch_dist_sq.mean().detach() + 1e-5
+
+#             if not self.is_initialized:
+#                 self.mu_1 = batch_mu_1
+#                 self.sigma_sq = batch_sigma_sq
+#                 self.is_initialized = True
+#             else:
+#                 self.mu_1 = self.alpha * self.mu_1 + (1 - self.alpha) * batch_mu_1
+#                 self.sigma_sq = self.alpha * self.sigma_sq + (1 - self.alpha) * batch_sigma_sq
+
+#         # Calculate continuous severity w(z) for the whole batch
+#         dist_sq = torch.sum((z - self.mu_1)**2, dim=1)
+#         w_z = torch.exp(-dist_sq / (2 * self.sigma_sq))
+
+#         # Clamp to prevent log(0) exploding gradients
+#         w_z = torch.clamp(w_z, 1e-6, 1.0 - 1e-6)
+
+#         # Apply Binary Cross-Entropy Loss
+#         loss = -torch.mean(y * torch.log(w_z) + (1 - y) * torch.log(1 - w_z))
+        
+#         return loss
+
 class LatentStructuringLoss(nn.Module):
-    def __init__(self, latent_dim, alpha=0.99):
+    def __init__(self, latent_dim, alpha=0.90, margin=3.0):
         super().__init__()
         self.alpha = alpha
+        self.margin = margin
         
-        # Use buffers so they move to the correct GPU automatically and save in state_dict
+        # We only need to track the centroid now, sigma_sq is no longer needed
         self.register_buffer('mu_1', torch.zeros(latent_dim))
-        self.register_buffer('sigma_sq', torch.ones(1))
         self.is_initialized = False
 
     def forward(self, z, y):
@@ -404,31 +448,36 @@ class LatentStructuringLoss(nn.Module):
         z: Latent encodings from the VAE (batch_size, latent_dim)
         y: Binary labels (batch_size, 1) - 1 for minority, 0 for majority
         """
+        # Flatten z just to be completely safe
+        z = z.view(z.shape[0], -1)
         y = y.float().squeeze()
         minority_mask = (y == 1.0)
 
-        # Update EMA Centroid and Variance (only if batch has minority points)
+        # Update EMA Centroid (only if batch has minority points)
         if minority_mask.sum() > 0:
-            batch_mu_1 = z[minority_mask].mean(dim=0).detach() # Detach to prevent graph cycles
-            batch_dist_sq = torch.sum((z[minority_mask] - batch_mu_1)**2, dim=1)
-            batch_sigma_sq = batch_dist_sq.mean().detach() + 1e-5
+            batch_mu_1 = z[minority_mask].mean(dim=0).detach()
 
             if not self.is_initialized:
                 self.mu_1 = batch_mu_1
-                self.sigma_sq = batch_sigma_sq
                 self.is_initialized = True
             else:
                 self.mu_1 = self.alpha * self.mu_1 + (1 - self.alpha) * batch_mu_1
-                self.sigma_sq = self.alpha * self.sigma_sq + (1 - self.alpha) * batch_sigma_sq
 
-        # Calculate continuous severity w(z) for the whole batch
-        dist_sq = torch.sum((z - self.mu_1)**2, dim=1)
-        w_z = torch.exp(-dist_sq / (2 * self.sigma_sq))
+        # Calculate Euclidean distance 'd'
+        # # Added 1e-8 inside the sqrt to prevent NaN gradients if distance is exactly 0
+        # dist = torch.sqrt(torch.sum((z - self.mu_1)**2, dim=1) + 1e-8)
+        # USE MEAN INSTEAD OF SUM: Puts the distance on an O(1) scale
+        dist = torch.sqrt(torch.mean((z - self.mu_1)**2, dim=1) + 1e-8)
 
-        # Clamp to prevent log(0) exploding gradients
-        w_z = torch.clamp(w_z, 1e-6, 1.0 - 1e-6)
-
-        # Apply Binary Cross-Entropy Loss
-        loss = -torch.mean(y * torch.log(w_z) + (1 - y) * torch.log(1 - w_z))
+        # --- CONTRASTIVE MARGIN LOSS ---
+        # 1. Minority (y=1): Pull to centroid -> loss = d^2
+        loss_min = y * (dist ** 2)
+        
+        # 2. Majority (y=0): Push away up to the margin -> loss = max(0, margin - d)^2
+        # Using F.relu is the PyTorch native way to do max(0, x) cleanly with gradients
+        loss_maj = (1 - y) * (F.relu(self.margin - dist) ** 2)
+        
+        # Total mean loss
+        loss = torch.mean(loss_min + loss_maj)
         
         return loss

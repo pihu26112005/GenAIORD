@@ -4,6 +4,7 @@ import os
 import argparse
 import warnings
 import time
+import numpy as np
 
 from tabsyn.model import MLPDiffusion, Model
 from tabsyn.latent_utils import get_input_generate, recover_data, split_num_cat_target
@@ -53,15 +54,30 @@ def main(args):
     else:
         label = torch.zeros((num_samples, 1), device=device)
         
-    # 3. Load the overlap centroid (mu_01) for Latent Repulsion
-    mu_01_path = f'{ckpt_path}/mu_01.pt'
-    if os.path.exists(mu_01_path):
-        mu_01 = torch.load(mu_01_path).to(device)
-        print("Loaded mu_01 centroid for Latent Repulsion.")
-    else:
-        mu_01 = None
-        print("No mu_01 centroid found. Running without Latent Repulsion.")
-    
+    # # 3. Load the overlap centroid (mu_01) for Latent Repulsion
+    # mu_01_path = f'{ckpt_path}/mu_01.pt'
+    # if os.path.exists(mu_01_path):
+    #     mu_01 = torch.load(mu_01_path).to(device)
+    #     print("Loaded mu_01 centroid for Latent Repulsion.")
+    # else:
+    #     mu_01 = None
+    #     print("No mu_01 centroid found. Running without Latent Repulsion.")
+    # 3. Calculate the true Minority Core (mu_minority) directly from train_z
+    try:
+        # Load the real labels to figure out which points in train_z are minority
+        y_train = np.load(f'data/{dataname}/y_train.npy').reshape(-1)
+        
+        # Filter for only the minority points
+        minority_z = train_z[y_train == 1]
+        
+        # Calculate their exact physical center
+        mu_minority = torch.tensor(minority_z.mean(axis=0)).float().to(device)
+        print("Calculated mu_minority for Core Expansion.")
+        
+    except FileNotFoundError:
+        mu_minority = None
+        print("Could not load y_train.npy. Running without Repulsion.")
+        
     ######
     denoise_fn = MLPDiffusion(in_dim, label_dim, 1024).to(device)
     
@@ -83,7 +99,7 @@ def main(args):
     # gamma_penalty = 0.1 # Tuning parameter for the strength of repulsion
     gamma_penalty = 0.0
     
-    x_next = sample(model.denoise_fn_D, num_samples, sample_dim, label, mu_01=mu_01, gamma_penalty=gamma_penalty, device=device)
+    x_next = sample(model.denoise_fn_D, num_samples, sample_dim, label, mu_01=mu_minority, gamma_penalty=gamma_penalty, device=device)
     x_next = x_next * 2 + mean.to(device)
 
     syn_data = x_next.float().cpu().numpy()

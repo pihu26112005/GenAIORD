@@ -55,12 +55,19 @@ def sample_step(net, num_steps, i, t_cur, t_next, x_next, label, mu_01=None, gam
     
     # --- NEW: LATENT REPULSION ENERGY GRADIENT ---
     repulsion_grad = 0
-    # Only repel if we are synthesizing minority points (where label is 1.0)
-    if mu_01 is not None and torch.all(label == 1.0):
+    # # Only repel if we are synthesizing minority points (where label is 1.0)
+    # if mu_01 is not None and torch.all(label == 1.0):
+    #     epsilon = 1e-5
+    #     # Energy E = 1 / (||x_hat - mu_01||^2 + eps)
+    #     dist_sq = torch.sum((x_hat - mu_01)**2, dim=1, keepdim=True)
+    #     # Gradient of E w.r.t x_hat
+    #     energy_grad = -2 * (x_hat - mu_01) / ((dist_sq + epsilon)**2)
+    #     repulsion_grad = gamma_penalty * energy_grad
+    
+    # FIX: Add gamma_penalty > 0.0 to short-circuit the NaN trap
+    if gamma_penalty > 0.0 and mu_01 is not None and torch.all(label == 1.0):
         epsilon = 1e-5
-        # Energy E = 1 / (||x_hat - mu_01||^2 + eps)
         dist_sq = torch.sum((x_hat - mu_01)**2, dim=1, keepdim=True)
-        # Gradient of E w.r.t x_hat
         energy_grad = -2 * (x_hat - mu_01) / ((dist_sq + epsilon)**2)
         repulsion_grad = gamma_penalty * energy_grad
     
@@ -74,7 +81,13 @@ def sample_step(net, num_steps, i, t_cur, t_next, x_next, label, mu_01=None, gam
         denoised = net(x_next, t_next, label).to(torch.float32)
         
         repulsion_grad_prime = 0
-        if mu_01 is not None and torch.all(label == 1.0):
+        # if mu_01 is not None and torch.all(label == 1.0):
+        #     dist_sq_prime = torch.sum((x_next - mu_01)**2, dim=1, keepdim=True)
+        #     energy_grad_prime = -2 * (x_next - mu_01) / ((dist_sq_prime + epsilon)**2)
+        #     repulsion_grad_prime = gamma_penalty * energy_grad_prime
+        
+        if gamma_penalty > 0.0 and mu_01 is not None and torch.all(label == 1.0):
+            epsilon = 1e-5
             dist_sq_prime = torch.sum((x_next - mu_01)**2, dim=1, keepdim=True)
             energy_grad_prime = -2 * (x_next - mu_01) / ((dist_sq_prime + epsilon)**2)
             repulsion_grad_prime = gamma_penalty * energy_grad_prime

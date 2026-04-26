@@ -16,7 +16,7 @@
         "capital-loss",
         "hours-per-week",
         "native-country",
-        "income"
+        "cond"
     ],
     "num_col_idx": [
         0,
@@ -39,7 +39,7 @@
         13
     ],
     "file_type": "csv",
-    "data_path": "data/adult/imbalanced_noord.csv",
+    "data_path": "data/adult/imbalanced_ord.csv",
     "test_path": null,
     "column_info": {
         "0": {},
@@ -53,7 +53,8 @@
         "1": {},
         "categorizes": [
             0,
-            1
+            1,
+            2
         ],
         "3": {},
         "4": {},
@@ -64,8 +65,8 @@
         "12": {},
         "13": {}
     },
-    "train_num": 29388,
-    "test_num": 3266,
+    "train_num": 31062,
+    "test_num": 3452,
     "idx_mapping": {
         "0": 0,
         "1": 5,
@@ -112,7 +113,7 @@
         "10": "capital-loss",
         "11": "hours-per-week",
         "12": "native-country",
-        "13": "income"
+        "13": "cond"
     },
     "metadata": {
         "columns": {
