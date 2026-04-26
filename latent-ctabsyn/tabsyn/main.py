@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy as np
+import random
 
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -14,8 +15,22 @@ from tabsyn.latent_utils import get_input_train
 
 warnings.filterwarnings('ignore')
 
+def seed_everything(seed=42):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed) # If using multi-GPU
+    
+    # Force deterministic operations in CuDNN
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 
 def main(args): 
+    seed_everything(42)
+    
     device = args.device
 
     train_z, _, dataset_dir, ckpt_path, _ = get_input_train(args)

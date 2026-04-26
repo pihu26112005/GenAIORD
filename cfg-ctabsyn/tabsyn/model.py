@@ -219,3 +219,56 @@ class CFGWrapper(torch.nn.Module):
         # 3. Extrapolate (The CFG Math)
         return uncond_pred + self.gamma * (cond_pred - uncond_pred)
 # ========================================
+
+
+class AdvancedCFGWrapper(torch.nn.Module):
+    def __init__(self, model, gamma_maj=1.1, gamma_min_start=0.9, gamma_min_end=1.0):
+        super().__init__()
+        self.model = model
+        
+        # Static gamma for Clear Majority (C00) -> Keeps them tight and precise
+        self.gamma_maj = gamma_maj
+        
+        # Dynamic gamma bounds for Overlap (C01) and Minority (C1) -> Prevents starvation early, enforces boundary late
+        self.gamma_min_start = gamma_min_start
+        self.gamma_min_end = gamma_min_end
+    
+    # ====== PASS-THROUGH PROPERTIES ======
+    @property
+    def sigma_min(self):
+        return self.model.sigma_min
+        
+    @property
+    def sigma_max(self):
+        return self.model.sigma_max
+        
+    def round_sigma(self, sigma):
+        return self.model.round_sigma(sigma)
+    # =====================================
+
+    def forward(self, x, sigma, label):
+        # 1. Get unconditional and conditional predictions
+        null_label = torch.zeros_like(label)
+        uncond_pred = self.model(x, sigma, null_label)
+        cond_pred = self.model(x, sigma, label)
+        
+        # 2. Robustly identify if the target is Clear Majority (Class 0)
+        is_maj = label[..., 0:1]
+            
+        # 3. Calculate diffusion progress (1.0 at start/high noise -> 0.0 at end/low noise)
+        progress = (sigma - self.sigma_min) / (self.sigma_max - self.sigma_min)
+        progress = progress.view(-1, 1) # Reshape for tensor broadcasting
+        
+        # 4. Calculate Timestep-Scheduled Gamma for Minority/Overlap
+        # Math: 1.0 - ((1.0 - 0.88) * progress)
+        # Evaluates to 0.88 when progress is 1.0
+        # Evaluates to 1.0 when progress is 0.0
+        gamma_min_t = self.gamma_min_end - ((self.gamma_min_end - self.gamma_min_start) * progress)
+        
+        # 5. Blend the Asymmetric Gammas
+        # Majority points get the constant gamma_maj.
+        # Minority/Overlap points get the dynamic gamma_min_t.
+        gamma = (is_maj * self.gamma_maj) + ((1.0 - is_maj) * gamma_min_t)
+        
+        # 6. Apply CFG Math
+        return uncond_pred + gamma * (cond_pred - uncond_pred)

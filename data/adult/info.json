@@ -65,8 +65,8 @@
         "12": {},
         "13": {}
     },
-    "train_num": 31062,
-    "test_num": 3452,
+    "train_num": 29388,
+    "test_num": 3266,
     "idx_mapping": {
         "0": 0,
         "1": 5,

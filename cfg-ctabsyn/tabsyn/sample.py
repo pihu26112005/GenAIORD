@@ -4,7 +4,7 @@ import argparse
 import warnings
 import time
 
-from tabsyn.model import MLPDiffusion, Model, CFGWrapper
+from tabsyn.model import MLPDiffusion, Model, CFGWrapper, AdvancedCFGWrapper
 from tabsyn.latent_utils import get_input_generate, recover_data, split_num_cat_target
 from tabsyn.diffusion_utils import sample
 
@@ -43,9 +43,12 @@ def main(args):
     model.load_state_dict(torch.load(f'{ckpt_path}/model.pt'))
     
     # ====== ADD CFG INITIALIZATION ======
-    # gamma > 1.0 pushes generation toward the specific class. 
-    # Values between 1.5 and 4.0 are typical. Tune this!
-    gamma = 0.88
+    # gamma > 1.0 pushes generation toward the specific class. => good for majority points
+    # gamma < 1.0 interpolated between unconditional and conditional => good for minority points
+    # gamma_maj = 1.1
+    # gamma_min = 0.9
+    # cfg_denoiser = AdvancedCFGWrapper(model.denoise_fn_D, gamma_maj, gamma_min)
+    gamma = 0.9
     cfg_denoiser = CFGWrapper(model.denoise_fn_D, gamma)
     # ====================================
 

@@ -11,11 +11,24 @@ import os
 from tqdm import tqdm
 import json
 import time
+import random
 
 from tabsyn.vae.model import Model_VAE, Encoder_model, Decoder_model
 from utils_train import preprocess, TabularDataset
 
 warnings.filterwarnings('ignore')
+
+def seed_everything(seed=42):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed) # If using multi-GPU
+    
+    # Force deterministic operations in CuDNN
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 LR = 1e-3
@@ -53,6 +66,8 @@ def compute_loss(X_num, X_cat, Recon_X_num, Recon_X_cat, mu_z, logvar_z):
 
 
 def main(args):
+    seed_everything(42)
+    
     dataname = args.dataname
     data_dir = f'data/{dataname}'
 
