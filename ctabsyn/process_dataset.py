@@ -11,7 +11,8 @@ TYPE_TRANSFORM ={
     'int', int
 }
 
-INFO_PATH = 'data/Info'
+# INFO_PATH = 'data/Info'
+INFO_PATH = '../data/Info'
 
 parser = argparse.ArgumentParser(description='process dataset')
 
@@ -259,7 +260,9 @@ def process_data(name):
 
  
     # save_dir = f'data/{name}'
-    save_dir = f'data/{name}/Data_Tabddpm'
+    save_dir = f'../data/{name}/Data_Tabddpm'
+    os.makedirs(save_dir, exist_ok=True)
+    
     np.save(f'{save_dir}/X_num_train.npy', X_num_train)
     np.save(f'{save_dir}/X_cat_train.npy', X_cat_train)
     np.save(f'{save_dir}/y_train.npy', y_train)
