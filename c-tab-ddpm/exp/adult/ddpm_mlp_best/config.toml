@@ -1,5 +1,5 @@
 parent_dir = "exp/adult/ddpm_mlp_best"
-real_data_path = "data/adult/"
+real_data_path = "../data/adult/Data_Tabddpm/"
 num_numerical_features = 6
 model_type = "mlp"
 seed = 0
