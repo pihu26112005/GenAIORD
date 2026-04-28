@@ -258,7 +258,8 @@ def process_data(name):
     y_test = test_df[target_columns].to_numpy()
 
  
-    save_dir = f'data/{name}'
+    # save_dir = f'data/{name}'
+    save_dir = f'data/{name}/Data_Tabddpm'
     np.save(f'{save_dir}/X_num_train.npy', X_num_train)
     np.save(f'{save_dir}/X_cat_train.npy', X_cat_train)
     np.save(f'{save_dir}/y_train.npy', y_train)
@@ -350,3 +351,6 @@ if __name__ == "__main__":
 
         
 
+
+
+# python process_dataset.py --dataname adult
