@@ -1,0 +1,1 @@
+convert BAd and good labels to 0 and 1 
