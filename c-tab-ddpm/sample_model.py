@@ -5,7 +5,7 @@ config_path = "exp/adult/ddpm_mlp_best/config.toml"
 target_col = "income" 
 
 print("Generating samples from TabDDPM...")
-os.system(f"python scripts/pipeline.py --config {config_path} --sample")
+os.system(f"PYTHONPATH=. python scripts/pipeline.py --config {config_path} --sample")
 
 # Locate the output file
 exp_dir = "exp/adult/ddpm_mlp_best/"
@@ -37,3 +37,5 @@ print(f"Success! Saved {len(df_minority)} minority rows to {min_path}")
 print(f"Success! Saved {len(df_majority)} majority rows to {maj_path}")
 
 # python sample_model.py
+
+# PYTHONPATH=. python scripts/pipeline.py  --sample --config exp/adult/config.toml

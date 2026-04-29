@@ -24,12 +24,16 @@ def expected_calibration_error(samples, true_labels, M=10, threshold=0.5):
             ece += np.abs(avg_confidence_in_bin - accuracy_in_bin) * prob_in_bin
     return ece.item()
 
-def calculate_utility(X_train, y_train, X_test, y_test, use_gpu=True):
+def calculate_utility(X_train, y_train, X_test, y_test, use_gpu=True, RANDOM_SEED=42):
     """Trains an XGBoost model on augmented data and evaluates on real test data."""
     xgb_train = xgb.DMatrix(X_train, label=y_train, enable_categorical=True)
     xgb_test = xgb.DMatrix(X_test, enable_categorical=True)
 
-    params = {'objective': 'binary:logistic', 'eval_metric': 'logloss'}
+    params = {
+        'objective': 'binary:logistic',
+        'eval_metric': 'logloss',
+        'seed': RANDOM_SEED  # <--- Add this to lock the model's random state
+    }
     if use_gpu:
         params['tree_method'] = 'hist'
         params['device'] = 'cuda'
