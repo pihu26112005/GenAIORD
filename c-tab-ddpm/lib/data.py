@@ -239,7 +239,8 @@ def normalize(
 
 def cat_process_nans(X: ArrayDict, policy: Optional[CatNanPolicy]) -> ArrayDict:
     assert X is not None
-    nan_masks = {k: v == CAT_MISSING_VALUE for k, v in X.items()}
+    # nan_masks = {k: v == CAT_MISSING_VALUE for k, v in X.items()}
+    nan_masks = {k: v.astype(str) == str(CAT_MISSING_VALUE) for k, v in X.items()}
     if any(x.any() for x in nan_masks.values()):  # type: ignore[code]
         if policy is None:
             X_new = X

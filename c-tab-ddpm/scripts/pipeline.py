@@ -62,6 +62,7 @@ def main():
             num_samples=raw_config['sample']['num_samples'],
             batch_size=raw_config['sample']['batch_size'],
             disbalance=raw_config['sample'].get('disbalance', None),
+            condition_by=raw_config['sample'].get('condition_by', None), # <--- ADD THIS LINE
             **raw_config['diffusion_params'],
             parent_dir=raw_config['parent_dir'],
             real_data_path=raw_config['real_data_path'],

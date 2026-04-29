@@ -25,7 +25,7 @@ def evaluate_strategy(model_name, strat_id, train_augmented, test_real, target_c
     real_subset = test_real.sample(n=min(2000, len(test_real)))
 
     # 1. Utility
-    utility = calculate_utility(X_train, y_train, X_test, y_test, use_gpu=True)
+    utility = calculate_utility(X_train, y_train, X_test, y_test, use_gpu=True, RANDOM_SEED=42)
     
     # 2. Fidelity 
     fidelity = calculate_fidelity(real_subset, synth_subset)
@@ -166,6 +166,12 @@ def main():
             
             if 'cond' in syn_min.columns: syn_min.drop('cond', axis=1, inplace=True)
             if 'cond' in syn_maj.columns: syn_maj.drop('cond', axis=1, inplace=True)
+
+            # --- THE FIX: Force synthetic columns to match real data order ---
+            expected_cols = real_train.columns.tolist()
+            syn_min = syn_min[expected_cols]
+            syn_maj = syn_maj[expected_cols]
+            # -----------------------------------------------------------------
             
             # ----------------------------------------------------------
             # STRATEGY 1: Real Maj + Real Min + Syn Min

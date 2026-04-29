@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import os
-import sys
 import json
 import argparse
 
@@ -259,14 +258,13 @@ def process_data(name):
     y_test = test_df[target_columns].to_numpy()
 
  
-    # save_dir = f'data/{name}'
     save_dir = f'../data/{name}/Data_Tabddpm'
     os.makedirs(save_dir, exist_ok=True)
     
     np.save(f'{save_dir}/X_num_train.npy', X_num_train)
     np.save(f'{save_dir}/X_cat_train.npy', X_cat_train)
     np.save(f'{save_dir}/y_train.npy', y_train)
-
+    
     np.save(f'{save_dir}/X_num_test.npy', X_num_test)
     np.save(f'{save_dir}/X_cat_test.npy', X_cat_test)
     np.save(f'{save_dir}/y_test.npy', y_test)

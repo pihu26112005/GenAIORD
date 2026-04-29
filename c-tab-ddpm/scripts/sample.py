@@ -31,6 +31,7 @@ def sample(
     T_dict = None,
     num_numerical_features = 0,
     disbalance = None,
+    condition_by = None, # <--- ADD THIS LINE
     device = torch.device('cuda:1'),
     seed = 0,
     change_val = False
@@ -76,7 +77,22 @@ def sample(
     
     _, empirical_class_dist = torch.unique(torch.from_numpy(D.y['train']), return_counts=True)
     # empirical_class_dist = empirical_class_dist.float() + torch.tensor([-5000., 10000.]).float()
-    if disbalance == 'fix':
+    
+    # --- NEW CUSTOM CONDITIONING LOGIC ---
+    if condition_by is not None:
+        ix_major = empirical_class_dist.argmax().item()
+        ix_minor = empirical_class_dist.argmin().item()
+        
+        distrib = torch.zeros_like(empirical_class_dist)
+        
+        if condition_by == 0:
+            distrib[ix_major] = 1 # 100% Majority
+        elif condition_by == 1:
+            distrib[ix_minor] = 1 # 100% Minority
+            
+        x_gen, y_gen = diffusion.sample_all(num_samples, batch_size, distrib.float(), ddim=False)
+    
+    elif disbalance == 'fix':
         empirical_class_dist[0], empirical_class_dist[1] = empirical_class_dist[1], empirical_class_dist[0]
         x_gen, y_gen = diffusion.sample_all(num_samples, batch_size, empirical_class_dist.float(), ddim=False)
 
