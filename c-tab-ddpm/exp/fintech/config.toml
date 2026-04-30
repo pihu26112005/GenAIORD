@@ -38,7 +38,7 @@ y_policy = "default"
 [sample]
 num_samples = 30000
 batch_size = 10000
-seed = 0
+seed = 42
 condition_by = 1  # Use 1 for all minority, 0 for all majority. Remove entirely for standard sampling.
 
 [eval.type]

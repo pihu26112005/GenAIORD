@@ -36,10 +36,10 @@ cat_encoding = "__none__"
 y_policy = "default"
 
 [sample]
-num_samples = 30000
+num_samples = 5000
 batch_size = 10000
-seed = 0
-condition_by = 1  # Use 1 for all minority, 0 for all majority. Remove entirely for standard sampling.
+seed = 42
+condition_by = 0  # Use 1 for all minority, 0 for all majority. Remove entirely for standard sampling.
 
 [eval.type]
 eval_model = "mlp"

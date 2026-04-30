@@ -32,7 +32,7 @@ def get_input_generate(args):
     dataname = args.dataname
 
     curr_dir = os.path.dirname(os.path.abspath(__file__))
-    dataset_dir = f'data/{dataname}'
+    dataset_dir = f'data/{dataname}/Tabsyn'
     ckpt_dir = f'{curr_dir}/ckpt/{dataname}'
 
     with open(f'{dataset_dir}/info.json', 'r') as f:
