@@ -48,7 +48,7 @@ def main(args):
     # gamma_maj = 1.1
     # gamma_min = 0.9
     # cfg_denoiser = AdvancedCFGWrapper(model.denoise_fn_D, gamma_maj, gamma_min)
-    gamma = 0.9
+    gamma = 0.95
     cfg_denoiser = CFGWrapper(model.denoise_fn_D, gamma)
     # ====================================
 
