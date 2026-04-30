@@ -111,11 +111,13 @@ def preprocess_fintech():
 
     columns = data_df.columns.tolist()
 
-    # 2. Target column is 'churn'
-    if 'churn' in columns:
+    # 2. Target column is 'cond' (or fallback to 'churn'/'0')
+    if 'cond' in columns:
+        target_idx = columns.index('cond')
+    elif 'churn' in columns:
         target_idx = columns.index('churn')
     else:
-        target_idx = 0 
+        target_idx = 0
 
     # 3. Identify categorical columns (Fintech has strings like housing, payment_type)
     cat_col_idx = []
@@ -297,14 +299,15 @@ def process_data(name):
     train_df.rename(columns = idx_name_mapping, inplace=True)
     test_df.rename(columns = idx_name_mapping, inplace=True)
 
+    # Safely replace '?' and fill actual NaNs
     for col in num_columns:
-        train_df.loc[train_df[col] == '?', col] = np.nan
+        train_df[col] = train_df[col].replace('?', np.nan)
+        test_df[col] = test_df[col].replace('?', np.nan)
+        
     for col in cat_columns:
-        train_df.loc[train_df[col] == '?', col] = 'nan'
-    for col in num_columns:
-        test_df.loc[test_df[col] == '?', col] = np.nan
-    for col in cat_columns:
-        test_df.loc[test_df[col] == '?', col] = 'nan'
+        # Replace '?', fill NaNs with string 'nan', and cast to string to prevent float errors
+        train_df[col] = train_df[col].replace('?', 'nan').fillna('nan').astype(str)
+        test_df[col] = test_df[col].replace('?', 'nan').fillna('nan').astype(str)
 
     X_num_train = train_df[num_columns].to_numpy().astype(np.float32)
     X_cat_train = train_df[cat_columns].to_numpy()

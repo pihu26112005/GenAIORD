@@ -14,7 +14,7 @@ args = parser.parse_args()
 DATASET = args.dataname
 BASE_INFO_PATH = f'../data/Info/{DATASET}.json'
 INPUT_DATA_CSV = f'../data/{DATASET}/imbalanced_noord.csv'
-TARGET_EXPORT_DIR = f'../data/{DATASET}/Data_Tabddpm'
+TARGET_EXPORT_DIR = f'../data/{DATASET}/Tabddpm'
 
 os.makedirs(TARGET_EXPORT_DIR, exist_ok=True)
 
@@ -57,9 +57,23 @@ else:
     np.save(os.path.join(TARGET_EXPORT_DIR, 'X_cat_test.npy'), np.empty((len(X_test), 0)))
 
 # -- Numerical processing --
+
+# 1. Force columns to numeric, converting garbage strings like 'na' into np.nan
+for col in num_cols:
+    X_train.loc[:, col] = pd.to_numeric(X_train[col], errors='coerce')
+    X_val.loc[:, col] = pd.to_numeric(X_val[col], errors='coerce')
+    X_test.loc[:, col] = pd.to_numeric(X_test[col], errors='coerce')
+
+# 2. Extract values and cast to float32
 X_num_train = X_train[num_cols].values.astype(np.float32)
 X_num_val = X_val[num_cols].values.astype(np.float32)
 X_num_test = X_test[num_cols].values.astype(np.float32)
+
+# 3. Fill the NaNs! (Neural networks like DDPMs output loss=NaN if fed NaN values)
+# Here we replace missing values with 0.0. 
+X_num_train = np.nan_to_num(X_num_train, nan=0.0)
+X_num_val = np.nan_to_num(X_num_val, nan=0.0)
+X_num_test = np.nan_to_num(X_num_test, nan=0.0)
 
 np.save(os.path.join(TARGET_EXPORT_DIR, 'X_num_train.npy'), X_num_train)
 np.save(os.path.join(TARGET_EXPORT_DIR, 'X_num_val.npy'), X_num_val)

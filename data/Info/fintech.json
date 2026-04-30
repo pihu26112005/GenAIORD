@@ -4,6 +4,7 @@
     "header": "infer",
     "column_names": null,
     "num_col_idx": [
+        0,
         2,
         3,
         4,
@@ -28,8 +29,7 @@
         25,
         26,
         27,
-        28,
-        29
+        28
     ],
     "cat_col_idx": [
         1,
@@ -37,9 +37,9 @@
         23
     ],
     "target_col_idx": [
-        0
+        29
     ],
     "file_type": "csv",
-    "data_path": "../data/fintech/imbalanced_noord.csv",
+    "data_path": "../data/fintech/imbalanced_ord.csv",
     "test_path": null
 }
