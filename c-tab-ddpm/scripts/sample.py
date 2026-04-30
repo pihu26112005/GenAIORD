@@ -138,10 +138,12 @@ def sample(
     # y_gen = y_gen[np.all(idx, axis=1)]
     ###
 
-    num_numerical_features = num_numerical_features + int(D.is_regression and not model_params["is_y_cond"])
+# FIX 1: Added the missing underscore to correctly grab the 23 features
+    num_numerical_features = num_numerical_features_ + int(D.is_regression and not model_params["is_y_cond"])
 
     X_num_ = X_gen
-    if num_numerical_features < X_gen.shape[1]:
+    # FIX 2: Added a strict safeguard so it only runs if cat_transform actually exists
+    if num_numerical_features < X_gen.shape[1] and D.cat_transform is not None:
         np.save(os.path.join(parent_dir, 'X_cat_unnorm'), X_gen[:, num_numerical_features:])
         # _, _, cat_encoder = lib.cat_encode({'train': X_cat_real}, T_dict['cat_encoding'], y_real, T_dict['seed'], True)
         if T_dict['cat_encoding'] == 'one-hot':

@@ -1,0 +1,54 @@
+{
+    "name": "adult_imbalanced",
+    "task_type": "binclass",
+    "n_num_features": 6,
+    "n_cat_features": 7,
+    "train_size": 26449,
+    "val_size": 2939,
+    "test_size": 3266,
+    "cat_cardinalities": [
+        7,
+        5,
+        7,
+        5,
+        3,
+        2,
+        2
+    ],
+    "idx_name_mapping": {
+        "0": "age",
+        "1": "fnlwgt",
+        "2": "educational-num",
+        "3": "capital-gain",
+        "4": "capital-loss",
+        "5": "hours-per-week",
+        "6": "workclass",
+        "7": "marital-status",
+        "8": "occupation",
+        "9": "relationship",
+        "10": "race",
+        "11": "gender",
+        "12": "native-country",
+        "13": "income"
+    },
+    "num_col_idx": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+    ],
+    "cat_col_idx": [
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+    ],
+    "target_col_idx": [
+        13
+    ]
+}

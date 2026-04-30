@@ -1,221 +1,197 @@
 import sys
 import os
-import argparse
 import pandas as pd
 import datetime as dt
+from sklearn.preprocessing import OrdinalEncoder
 
 # Import from your modules
 from utility_metrics import calculate_utility
 from fidelity_metrics import calculate_fidelity
 from privacy_metrics import calculate_privacy
 
+# =====================================================================
+# ⚙️ CONFIGURATION HUB - EDIT THESE BEFORE RUNNING FOR A NEW DATASET
+# =====================================================================
+TARGET_DATASET = 'fintech'       # Options: 'adult', 'heloc', 'fintech'
+TARGET_COLUMN = 'is_referred'          # Options: 'income', 'RiskPerformance', 'is_referred' (Change if needed)
+GAMMAS = ['0.75', '0.8', '0.85', '0.7', '0.9', '0.95'] # Add your specific gamma tags
+# =====================================================================
+
 def evaluate_strategy(model_name, strat_id, train_augmented, test_real, target_col):
-    print(f"  -> Evaluating {model_name} | {strat_id} ...")
+    print(f"    -> Evaluating Strategy: {strat_id} ...")
     
-    # Split features and targets
-    X_train = train_augmented.drop(columns=[target_col])
-    y_train = train_augmented[target_col]
-    X_test = test_real.drop(columns=[target_col])
-    y_test = test_real[target_col]
+    # Make safe copies to prevent Pandas warnings and cross-contamination
+    train_aug = train_augmented.copy()
+    test_r = test_real.copy()
 
-    # Assume rows added at the end are synthetic (or filter them if you have a flag)
-    # For a general proxy, we just compare the whole augmented train vs original test
-    # In a perfect setup, you would pass EXACTLY the synthetic chunk here for fidelity
-    synth_subset = train_augmented.sample(n=min(2000, len(train_augmented))) 
-    real_subset = test_real.sample(n=min(2000, len(test_real)))
+    # --- FIX 3: The Imputation Layer (Squashing NaNs and Mixed Types) ---
+    # We must fill missing values BEFORE the math algorithms or encoders see them
+    for col in train_aug.columns:
+        if train_aug[col].dtype == 'object' or test_r[col].dtype == 'object':
+            # For text columns: Fill NaNs with the word 'Missing' and force everything to be a string
+            train_aug[col] = train_aug[col].fillna('Missing').astype(str)
+            test_r[col] = test_r[col].fillna('Missing').astype(str)
+        else:
+            # For number columns: Fill NaNs with the median value of that column
+            med = train_aug[col].median()
+            if pd.isna(med): med = 0 # Fallback just in case
+            train_aug[col] = train_aug[col].fillna(med)
+            test_r[col] = test_r[col].fillna(med)
+    # --------------------------------------------------------------------
 
-    # 1. Utility
+    # --- FIX 1: Encode String/Object Columns for XGBoost ---
+    # Find all columns that are objects (strings) and convert them to numeric labels
+    object_cols = train_aug.select_dtypes(include=['object']).columns.tolist()
+    if object_cols:
+        oe = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+        # Fit on combined data to ensure all possible labels are caught
+        oe.fit(pd.concat([train_aug[object_cols], test_r[object_cols]]))
+        train_aug[object_cols] = oe.transform(train_aug[object_cols])
+        test_r[object_cols] = oe.transform(test_r[object_cols])
+    # -------------------------------------------------------
+    
+    X_train = train_aug.drop(columns=[target_col])
+    y_train = train_aug[target_col]
+    X_test = test_r.drop(columns=[target_col])
+    y_test = test_r[target_col]
+
+    synth_subset = train_aug.sample(n=min(2000, len(train_aug))) 
+    real_subset = test_r.sample(n=min(2000, len(test_r)))
+
     utility = calculate_utility(X_train, y_train, X_test, y_test, use_gpu=True, RANDOM_SEED=42)
-    
-    # 2. Fidelity 
     fidelity = calculate_fidelity(real_subset, synth_subset)
-    
-    # 3. Privacy 
     privacy = calculate_privacy(real_subset, synth_subset)
     
-    # Merge dictionaries
     result = {"Model": model_name, "Strat": strat_id}
     result.update(utility)
     result.update(fidelity)
     result.update(privacy)
     
     return result
-
-# def main():
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument('--dataset', type=str, default='adult')
-#     parser.add_argument('--target', type=str, default='income')
-#     parser.add_argument('--tag', type=str, default='baseline', help='Ablation tag e.g., gamma0.8')
-#     args = parser.parse_args()
-
-#     # Load Base Data (Update paths to match your project root)
-#     base_path = f"../../data/{args.dataset}" 
-#     try:
-#         test_df = pd.read_csv(f'{base_path}/test_orig.csv')
-#         real_train = pd.read_csv(f'{base_path}/imbalanced_noord.csv')
-#     except FileNotFoundError:
-#         print(f"Error: Could not find data in {base_path}. Run from scripts/evaluation/")
-#         sys.exit(1)
+def evaluate_model_suite(model_name, min_path, maj_path, real_majority, real_minority, real_C00, test_df, target_col, N_maj, N_def, N_01, expected_cols):
+    results = []
+    try:
+        # Load synthetic data
+        syn_min = pd.read_csv(min_path)
+        syn_maj = pd.read_csv(maj_path)
         
-#     real_minority = real_train[real_train[args.target] == 1]
-#     real_majority = real_train[real_train[args.target] == 0]
-#     N_def = len(real_majority) - len(real_minority)
-
-#     # Registry of synthetic data paths
-#     SYNTHETIC_MODELS = {
-#         "Original_ORD": {
-#             "min": f"{base_path}/synthetic/synthetic_minority_original.csv",
-#             "maj": f"{base_path}/synthetic/synthetic_majority_original.csv"
-#         },
-#         "Proposed_CFG": {
-#             "min": f"{base_path}/synthetic/synthetic_minority_cfg.csv",
-#             "maj": f"{base_path}/synthetic/synthetic_majority_cfg.csv"
-#         }
-#         #"TabDDPM": {
-#         #    "min": f"{base_path}/synthetic/synthetic_minority_tabddpm.csv",
-#         #    "maj": f"{base_path}/synthetic/synthetic_majority_tabddpm.csv"
-#         #}
-#     }
-
-#     all_results = []
-
-#     for model_name, paths in SYNTHETIC_MODELS.items():
-#         try:
-#             syn_min = pd.read_csv(paths["min"])
-#             syn_min[args.target] = 1
-#             if 'cond' in syn_min.columns: syn_min.drop('cond', axis=1, inplace=True)
-            
-#             # S1: Real Maj + Real Min + Syn Min
-#             s1_min = syn_min.sample(n=N_def, replace=True, random_state=42)
-#             train_s1 = pd.concat([real_majority, real_minority, s1_min]).sample(frac=1).reset_index(drop=True)
-            
-#             res_s1 = evaluate_strategy(model_name, "S1_Balanced", train_s1, test_df, args.target)
-#             all_results.append(res_s1)
-            
-#             # You can add S2 and S3 logic here mirroring your old compute_mle.py script
-            
-#         except Exception as e:
-#             print(f"Skipping {model_name}: {e}")
-
-#     # Save Output with Naming Convention
-#     if all_results:
-#         report_df = pd.DataFrame(all_results)
+        syn_min[target_col] = 1
+        syn_maj[target_col] = 0
         
-#         timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-#         out_filename = f"../../results/{timestamp}_{args.dataset}_full_eval_{args.tag}.csv"
-        
-#         report_df.to_csv(out_filename, index=False)
-#         print(f"\n[SUCCESS] Saved comprehensive metrics to: {out_filename}")
+        if 'cond' in syn_min.columns: syn_min.drop('cond', axis=1, inplace=True)
+        if 'cond' in syn_maj.columns: syn_maj.drop('cond', axis=1, inplace=True)
 
+        # --- FIX 2: Bulletproof Dynamic Column Matching ---
+        # A column ONLY survives if it exists in every single dataframe we are about to use
+        valid_dfs = [syn_min, syn_maj, test_df, real_C00]
+        shared_cols = [col for col in expected_cols if all(col in df.columns for df in valid_dfs)]
+        
+        # Subset synthetic data to these shared columns
+        syn_min = syn_min[shared_cols]
+        syn_maj = syn_maj[shared_cols]
+        
+        # Subset real data (train and test) to these shared columns
+        r_maj = real_majority[shared_cols]
+        r_min = real_minority[shared_cols]
+        r_c00 = real_C00[shared_cols]
+        t_df  = test_df[shared_cols]
+        # ----------------------------------------
+        
+        # STRATEGY 1
+        s1_min = syn_min.sample(n=N_def, replace=True, random_state=42)
+        train_s1 = pd.concat([r_maj, r_min, s1_min]).sample(frac=1, random_state=42).reset_index(drop=True)
+        results.append(evaluate_strategy(model_name, "S1_Balanced", train_s1, t_df, target_col))
+        
+        # STRATEGY 2
+        s2_maj = syn_maj.sample(n=N_maj, replace=True, random_state=42)
+        s2_min = syn_min.sample(n=N_def, replace=True, random_state=42)
+        train_s2 = pd.concat([s2_maj, r_min, s2_min]).sample(frac=1, random_state=42).reset_index(drop=True)
+        results.append(evaluate_strategy(model_name, "S2_SynMaj", train_s2, t_df, target_col))
+
+        # STRATEGY 3
+        s3_maj = syn_maj.sample(n=N_01, replace=True, random_state=42)
+        s3_min = syn_min.sample(n=N_def, replace=True, random_state=42)
+        train_s3 = pd.concat([r_c00, s3_maj, r_min, s3_min]).sample(frac=1, random_state=42).reset_index(drop=True)
+        results.append(evaluate_strategy(model_name, "S3_Overlap", train_s3, t_df, target_col))
+        
+    except FileNotFoundError:
+        print(f"    [!] Missing files for {model_name}. Skipping.")
+    except Exception as e:
+        print(f"    [!] Error evaluating {model_name}: {e}")
+        
+    return results
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='adult')
-    parser.add_argument('--target', type=str, default='income')
-    parser.add_argument('--tag', type=str, default='baseline', help='Ablation tag e.g., gamma0.8')
-    args = parser.parse_args()
-
-    # Load Base Data
-    base_path = f"../../data/{args.dataset}" 
+    print(f"\n{'='*50}\nEvaluating Dataset: {TARGET_DATASET.upper()}\n{'='*50}")
+    base_path = f"../../data/{TARGET_DATASET}" 
+    
     try:
         test_df = pd.read_csv(f'{base_path}/test_orig.csv')
         real_train = pd.read_csv(f'{base_path}/imbalanced_noord.csv')
-        real_ord = pd.read_csv(f'{base_path}/imbalanced_ord.csv') # Needed for S3
+        real_ord = pd.read_csv(f'{base_path}/imbalanced_ord.csv')
     except FileNotFoundError:
-        print(f"Error: Could not find data in {base_path}. Run from scripts/evaluation/")
+        print(f"Error: Base data missing for {TARGET_DATASET}.")
         sys.exit(1)
         
-    real_minority = real_train[real_train[args.target] == 1]
-    real_majority = real_train[real_train[args.target] == 0]
+    real_minority = real_train[real_train[TARGET_COLUMN] == 1]
+    real_majority = real_train[real_train[TARGET_COLUMN] == 0]
     
-    # Geometries needed for the 3 strategies
     N_maj = len(real_majority)
-    N_def = len(real_majority) - len(real_minority)
+    # Clamp to 0 to prevent negative sampling crashes
+    N_def = max(0, len(real_majority) - len(real_minority))
     
     real_C00 = real_ord[real_ord['cond'] == 0].copy()
-    real_C00[args.target] = 0
+    real_C00[TARGET_COLUMN] = 0
     real_C00.drop('cond', axis=1, inplace=True)
-    N_01 = N_maj - len(real_C00) # The overlap amount
+    # Clamp to 0 to prevent negative sampling crashes
+    N_01 = max(0, N_maj - len(real_C00))
+    
+    expected_cols = real_train.columns.tolist()
 
-    # Registry of synthetic data paths
-    SYNTHETIC_MODELS = {
-        "Original_ORD": {
+    # 1. Evaluate Baselines (Runs ONCE to save time)
+    print("\n--- Phase 1: Evaluating Baselines ---")
+    baseline_results = []
+    baselines = {
+        "Original_TabSyn": {
             "min": f"{base_path}/synthetic/synthetic_minority_original.csv",
             "maj": f"{base_path}/synthetic/synthetic_majority_original.csv"
-        },
-        "Proposed_CFG": {
-            "min": f"{base_path}/synthetic/synthetic_minority_cfg.csv",
-            "maj": f"{base_path}/synthetic/synthetic_majority_cfg.csv"
         },
         "TabDDPM": {
             "min": f"{base_path}/synthetic/synthetic_minority_tabddpm.csv",
             "maj": f"{base_path}/synthetic/synthetic_majority_tabddpm.csv"
         }
     }
+    
+    for model_name, paths in baselines.items():
+        print(f"\n  [ Baseline ] {model_name}")
+        res = evaluate_model_suite(model_name, paths["min"], paths["maj"], real_majority, real_minority, real_C00, test_df, TARGET_COLUMN, N_maj, N_def, N_01, expected_cols)
+        baseline_results.extend(res)
 
-    all_results = []
+    # 2. Setup Folder Structure
+    results_dir = f"../../results/{TARGET_DATASET}"
+    os.makedirs(results_dir, exist_ok=True)
+    timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    for model_name, paths in SYNTHETIC_MODELS.items():
-        try:
-            # Load synthetic data
-            syn_min = pd.read_csv(paths["min"])
-            syn_maj = pd.read_csv(paths["maj"])
-            
-            syn_min[args.target] = 1
-            syn_maj[args.target] = 0
-            
-            if 'cond' in syn_min.columns: syn_min.drop('cond', axis=1, inplace=True)
-            if 'cond' in syn_maj.columns: syn_maj.drop('cond', axis=1, inplace=True)
-
-            # --- THE FIX: Force synthetic columns to match real data order ---
-            expected_cols = real_train.columns.tolist()
-            syn_min = syn_min[expected_cols]
-            syn_maj = syn_maj[expected_cols]
-            # -----------------------------------------------------------------
-            
-            # ----------------------------------------------------------
-            # STRATEGY 1: Real Maj + Real Min + Syn Min
-            # ----------------------------------------------------------
-            s1_min = syn_min.sample(n=N_def, replace=True, random_state=42)
-            train_s1 = pd.concat([real_majority, real_minority, s1_min]).sample(frac=1, random_state=42).reset_index(drop=True)
-            res_s1 = evaluate_strategy(model_name, "S1_Balanced", train_s1, test_df, args.target)
-            all_results.append(res_s1)
-            
-            # ----------------------------------------------------------
-            # STRATEGY 2: Syn Maj + Syn Min + Real Min
-            # ----------------------------------------------------------
-            s2_maj = syn_maj.sample(n=N_maj, replace=True, random_state=42)
-            s2_min = syn_min.sample(n=N_def, replace=True, random_state=42)
-            train_s2 = pd.concat([s2_maj, real_minority, s2_min]).sample(frac=1, random_state=42).reset_index(drop=True)
-            res_s2 = evaluate_strategy(model_name, "S2_SynMaj", train_s2, test_df, args.target)
-            all_results.append(res_s2)
-
-            # ----------------------------------------------------------
-            # STRATEGY 3: Real C00 + Syn C01 + Real Min + Syn Min
-            # ----------------------------------------------------------
-            s3_maj = syn_maj.sample(n=N_01, replace=True, random_state=42)
-            s3_min = syn_min.sample(n=N_def, replace=True, random_state=42)
-            train_s3 = pd.concat([real_C00, s3_maj, real_minority, s3_min]).sample(frac=1, random_state=42).reset_index(drop=True)
-            res_s3 = evaluate_strategy(model_name, "S3_Overlap", train_s3, test_df, args.target)
-            all_results.append(res_s3)
-            
-        except Exception as e:
-            print(f"Skipping {model_name}: {e}")
-
-    # Save Output with Naming Convention
-    if all_results:
-        report_df = pd.DataFrame(all_results)
+    # 3. Evaluate CFG for each Gamma and save distinct files
+    print("\n--- Phase 2: Evaluating CFG Models & Saving Reports ---")
+    for gamma in GAMMAS:
+        model_name = f"Proposed_CFG_Gamma_{gamma}"
+        print(f"\n  [ Proposed ] {model_name}")
         
-        timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_filename = f"../../results/{timestamp}_{args.dataset}_full_eval_{args.tag}.csv"
+        cfg_min_path = f"{base_path}/synthetic/synthetic_minority_cfg_gamma={gamma}.csv"
+        cfg_maj_path = f"{base_path}/synthetic/synthetic_majority_cfg_gamma={gamma}.csv"
         
-        report_df.to_csv(out_filename, index=False)
-        print(f"\n[SUCCESS] Saved comprehensive metrics to: {out_filename}")
+        cfg_results = evaluate_model_suite(model_name, cfg_min_path, cfg_maj_path, real_majority, real_minority, real_C00, test_df, TARGET_COLUMN, N_maj, N_def, N_01, expected_cols)
+        
+        final_report_data = baseline_results + cfg_results
+        
+        if final_report_data:
+            report_df = pd.DataFrame(final_report_data)
+            out_filename = f"{results_dir}/{timestamp}_eval_gamma{gamma}.csv"
+            report_df.to_csv(out_filename, index=False)
+            print(f"    [+] Saved report: {out_filename}")
 
+    print(f"\n[SUCCESS] Completed evaluations for {TARGET_DATASET.upper()}. All files saved to {results_dir}/")
 
 if __name__ == "__main__":
     main()
-
-
-#     cd scripts/evaluation
-# python run_evaluation.py --dataset adult --tag cfg_gamma0_8

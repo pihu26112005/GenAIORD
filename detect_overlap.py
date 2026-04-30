@@ -45,6 +45,15 @@ def find_boundary(df, TARGET, RANDOM_STATE=42, threshold=0.4):
         X_test = test.drop([TARGET, 'isBoundary'], axis=1, errors='ignore')
         y_test = test[TARGET]
         
+        # --- NEW CODE: Encode text to numbers for Random Forest ---
+        # Convert string columns (like 'housing' or 'zodiac_sign') into 1s and 0s
+        X_train = pd.get_dummies(X_train)
+        X_test = pd.get_dummies(X_test)
+        
+        # Ensure both train and test have the exact same columns after encoding
+        X_train, X_test = X_train.align(X_test, join='left', axis=1, fill_value=0)
+        # ----------------------------------------------------------
+        
         # Run Random Forest (n_estimators=50 matches your original RandomizedSearchCV goal)
         rf = RandomForestClassifier(n_estimators=50, random_state=RANDOM_STATE)
         rf.fit(X_train, y_train)

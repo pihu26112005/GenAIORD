@@ -3,10 +3,43 @@
     "task_type": "binclass",
     "header": "infer",
     "column_names": null,
-    "num_col_idx": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
-    "cat_col_idx": [],
-    "target_col_idx": [30],
+    "num_col_idx": [
+        0,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        19,
+        20,
+        21,
+        22,
+        24,
+        25,
+        26,
+        27,
+        28
+    ],
+    "cat_col_idx": [
+        1,
+        18,
+        23
+    ],
+    "target_col_idx": [
+        29
+    ],
     "file_type": "csv",
-    "data_path": "../data/fintech/imbalanced_noord.csv",
+    "data_path": "../data/fintech/imbalanced_ord.csv",
     "test_path": null
 }

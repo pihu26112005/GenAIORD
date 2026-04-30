@@ -10,7 +10,6 @@ TYPE_TRANSFORM ={
     'int', int
 }
 
-# INFO_PATH = 'data/Info'
 INFO_PATH = '../data/Info'
 
 parser = argparse.ArgumentParser(description='process dataset')
@@ -29,7 +28,6 @@ def preprocess_beijing():
     columns = data_df.columns
 
     data_df = data_df[columns[1:]]
-
 
     df_cleaned = data_df.dropna()
     df_cleaned.to_csv(info['data_path'], index = False)
@@ -73,13 +71,77 @@ def preprocess_news():
     with open(f'{INFO_PATH}/{name}.json', 'w') as file:
         json.dump(info, file, indent=4)
 
+# ==========================================
+# CUSTOM CASE FOR HELOC
+# ==========================================
+def preprocess_heloc():
+    with open(f'{INFO_PATH}/heloc.json', 'r') as f:
+        info = json.load(f)
+
+    data_df = pd.read_csv(info['data_path'])
+    columns = data_df.columns.tolist()
+
+    # HELOC target is typically 'RiskPerformance', fallback to the last column
+    if 'RiskPerformance' in columns:
+        target_idx = columns.index('RiskPerformance')
+    else:
+        target_idx = len(columns) - 1  
+
+    # HELOC has no categorical data
+    info['num_col_idx'] = [i for i in range(len(columns)) if i != target_idx]
+    info['cat_col_idx'] = []
+    info['target_col_idx'] = [target_idx]
+
+    with open(f'{INFO_PATH}/heloc.json', 'w') as file:
+        json.dump(info, file, indent=4)
+
+# ==========================================
+# CUSTOM CASE FOR FINTECH
+# ==========================================
+def preprocess_fintech():
+    with open(f'{INFO_PATH}/fintech.json', 'r') as f:
+        info = json.load(f)
+
+    data_df = pd.read_csv(info['data_path'])
+    
+    # 1. Drop the 'user' ID column for Fintech
+    if 'user' in data_df.columns:
+        data_df = data_df.drop('user', axis=1)
+        data_df.to_csv(info['data_path'], index=False) # Overwrite CSV without ID
+
+    columns = data_df.columns.tolist()
+
+    # 2. Target column is 'cond' (or fallback to 'churn'/'0')
+    if 'cond' in columns:
+        target_idx = columns.index('cond')
+    elif 'churn' in columns:
+        target_idx = columns.index('churn')
+    else:
+        target_idx = 0
+
+    # 3. Identify categorical columns (Fintech has strings like housing, payment_type)
+    cat_col_idx = []
+    for i, col in enumerate(columns):
+        if i != target_idx and data_df[col].dtype == 'object':
+            cat_col_idx.append(i)
+
+    # 4. Assign remaining columns as numerical
+    num_col_idx = [i for i in range(len(columns)) if i != target_idx and i not in cat_col_idx]
+
+    info['num_col_idx'] = num_col_idx
+    info['cat_col_idx'] = cat_col_idx
+    info['target_col_idx'] = [target_idx]
+
+    with open(f'{INFO_PATH}/fintech.json', 'w') as file:
+        json.dump(info, file, indent=4)
+        
+# ====================================================
 
 def get_column_name_mapping(data_df, num_col_idx, cat_col_idx, target_col_idx, column_names = None):
     
     if not column_names:
         column_names = np.array(data_df.columns.tolist())
     
-
     idx_mapping = {}
 
     curr_num_idx = 0
@@ -98,7 +160,6 @@ def get_column_name_mapping(data_df, num_col_idx, cat_col_idx, target_col_idx, c
             idx_mapping[int(idx)] = curr_target_idx
             curr_target_idx += 1
 
-
     inverse_idx_mapping = {}
     for k, v in idx_mapping.items():
         inverse_idx_mapping[int(v)] = k
@@ -115,7 +176,6 @@ def train_val_test_split(data_df, cat_columns, num_train = 0, num_test = 0):
     total_num = data_df.shape[0]
     idx = np.arange(total_num)
 
-
     seed = 1234
 
     while True:
@@ -125,11 +185,8 @@ def train_val_test_split(data_df, cat_columns, num_train = 0, num_test = 0):
         train_idx = idx[:num_train]
         test_idx = idx[-num_test:]
 
-
         train_df = data_df.loc[train_idx]
         test_df = data_df.loc[test_idx]
-
-
 
         flag = 0
         for i in cat_columns:
@@ -147,10 +204,15 @@ def train_val_test_split(data_df, cat_columns, num_train = 0, num_test = 0):
 
 def process_data(name):
 
+    # Route dataset to correct preprocessor
     if name == 'news':
         preprocess_news()
     elif name == 'beijing':
         preprocess_beijing()
+    elif name == 'heloc':
+        preprocess_heloc()
+    elif name == 'fintech':
+        preprocess_fintech()
 
     with open(f'{INFO_PATH}/{name}.json', 'r') as f:
         info = json.load(f)
@@ -237,28 +299,25 @@ def process_data(name):
     train_df.rename(columns = idx_name_mapping, inplace=True)
     test_df.rename(columns = idx_name_mapping, inplace=True)
 
+    # Safely replace '?' and fill actual NaNs
     for col in num_columns:
-        train_df.loc[train_df[col] == '?', col] = np.nan
+        train_df[col] = train_df[col].replace('?', np.nan)
+        test_df[col] = test_df[col].replace('?', np.nan)
+        
     for col in cat_columns:
-        train_df.loc[train_df[col] == '?', col] = 'nan'
-    for col in num_columns:
-        test_df.loc[test_df[col] == '?', col] = np.nan
-    for col in cat_columns:
-        test_df.loc[test_df[col] == '?', col] = 'nan'
+        # Replace '?', fill NaNs with string 'nan', and cast to string to prevent float errors
+        train_df[col] = train_df[col].replace('?', 'nan').fillna('nan').astype(str)
+        test_df[col] = test_df[col].replace('?', 'nan').fillna('nan').astype(str)
 
-
-    
     X_num_train = train_df[num_columns].to_numpy().astype(np.float32)
     X_cat_train = train_df[cat_columns].to_numpy()
     y_train = train_df[target_columns].to_numpy()
 
-
     X_num_test = test_df[num_columns].to_numpy().astype(np.float32)
     X_cat_test = test_df[cat_columns].to_numpy()
     y_test = test_df[target_columns].to_numpy()
-
  
-    save_dir = f'../data/{name}/Data_Tabddpm'
+    save_dir = f'../data/{name}/Tabsyn'
     os.makedirs(save_dir, exist_ok=True)
     
     np.save(f'{save_dir}/X_num_train.npy', X_num_train)
@@ -271,7 +330,6 @@ def process_data(name):
 
     train_df[num_columns] = train_df[num_columns].astype(np.float32)
     test_df[num_columns] = test_df[num_columns].astype(np.float32)
-
 
     train_df.to_csv(f'{save_dir}/train.csv', index = False)
     test_df.to_csv(f'{save_dir}/test.csv', index = False)
@@ -308,14 +366,11 @@ def process_data(name):
         metadata['columns'][i] = {}
         metadata['columns'][i]['sdtype'] = 'categorical'
 
-
     if task_type == 'regression':
-        
         for i in target_col_idx:
             metadata['columns'][i] = {}
             metadata['columns'][i]['sdtype'] = 'numerical'
             metadata['columns'][i]['computer_representation'] = 'Float'
-
     else:
         for i in target_col_idx:
             metadata['columns'][i] = {}
@@ -328,30 +383,9 @@ def process_data(name):
 
     print(f'Processing and Saving {name} Successfully!')
 
-    print(name)
-    print('Total', info['train_num'] + info['test_num'])
-    print('Train', info['train_num'])
-    print('Test', info['test_num'])
-    if info['task_type'] == 'regression':
-        num = len(info['num_col_idx'] + info['target_col_idx'])
-        cat = len(info['cat_col_idx'])
-    else:
-        cat = len(info['cat_col_idx'] + info['target_col_idx'])
-        num = len(info['num_col_idx'])
-    print('Num', num)
-    print('Cat', cat)
-
-
 if __name__ == "__main__":
-
     if args.dataname:
         process_data(args.dataname)
     else:
         for name in ['adult', 'default', 'shoppers', 'magic', 'beijing', 'news']:    
             process_data(name)
-
-        
-
-
-
-# python process_dataset.py --dataname adult
