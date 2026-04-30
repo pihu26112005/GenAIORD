@@ -10,7 +10,7 @@ def get_input_train(args):
     dataname = args.dataname
 
     curr_dir = os.path.dirname(os.path.abspath(__file__))
-    dataset_dir = f'data/{dataname}'
+    dataset_dir = f'data/{dataname}/Tabsyn'
 
     with open(f'{dataset_dir}/info.json', 'r') as f:
         info = json.load(f)

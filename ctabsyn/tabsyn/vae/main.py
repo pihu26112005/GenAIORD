@@ -70,7 +70,7 @@ def main(args):
     seed_everything(42)
     
     dataname = args.dataname
-    data_dir = f'data/{dataname}'
+    data_dir = f'data/{dataname}/Tabsyn'
 
     max_beta = args.max_beta
     min_beta = args.min_beta
@@ -79,7 +79,7 @@ def main(args):
     device =  args.device
 
 
-    info_path = f'data/{dataname}/info.json'
+    info_path = f'data/{dataname}/Tabsyn/info.json'
 
     with open(info_path, 'r') as f:
         info = json.load(f)
