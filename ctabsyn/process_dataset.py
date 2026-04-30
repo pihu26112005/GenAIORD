@@ -72,37 +72,68 @@ def preprocess_news():
         json.dump(info, file, indent=4)
 
 # ==========================================
-# NEW CUSTOM CASE FOR HELOC AND FINTECH
+# CUSTOM CASE FOR HELOC
 # ==========================================
-def preprocess_heloc_fintech(name):
-    with open(f'{INFO_PATH}/{name}.json', 'r') as f:
+def preprocess_heloc():
+    with open(f'{INFO_PATH}/heloc.json', 'r') as f:
         info = json.load(f)
 
     data_df = pd.read_csv(info['data_path'])
     columns = data_df.columns.tolist()
 
-    # Dynamically find the target column regardless of where the CSV saved it
-    if 'cond' in columns:
-        target_idx = columns.index('cond')
-    elif 'RiskPerformance' in columns:
+    # HELOC target is typically 'RiskPerformance', fallback to the last column
+    if 'RiskPerformance' in columns:
         target_idx = columns.index('RiskPerformance')
-    elif 'Class' in columns:
-        target_idx = columns.index('Class')
     else:
-        target_idx = len(columns) - 1  # Fallback
+        target_idx = len(columns) - 1  
 
-    # Assign everything else as a numerical column (since neither have categorical data)
-    num_col_idx = [i for i in range(len(columns)) if i != target_idx]
-
-    # Update the JSON mapping dynamically
-    info['num_col_idx'] = num_col_idx
+    # HELOC has no categorical data
+    info['num_col_idx'] = [i for i in range(len(columns)) if i != target_idx]
     info['cat_col_idx'] = []
     info['target_col_idx'] = [target_idx]
 
-    with open(f'{INFO_PATH}/{name}.json', 'w') as file:
+    with open(f'{INFO_PATH}/heloc.json', 'w') as file:
         json.dump(info, file, indent=4)
-# ==========================================
 
+# ==========================================
+# CUSTOM CASE FOR FINTECH
+# ==========================================
+def preprocess_fintech():
+    with open(f'{INFO_PATH}/fintech.json', 'r') as f:
+        info = json.load(f)
+
+    data_df = pd.read_csv(info['data_path'])
+    
+    # 1. Drop the 'user' ID column for Fintech
+    if 'user' in data_df.columns:
+        data_df = data_df.drop('user', axis=1)
+        data_df.to_csv(info['data_path'], index=False) # Overwrite CSV without ID
+
+    columns = data_df.columns.tolist()
+
+    # 2. Target column is 'churn'
+    if 'churn' in columns:
+        target_idx = columns.index('churn')
+    else:
+        target_idx = 0 
+
+    # 3. Identify categorical columns (Fintech has strings like housing, payment_type)
+    cat_col_idx = []
+    for i, col in enumerate(columns):
+        if i != target_idx and data_df[col].dtype == 'object':
+            cat_col_idx.append(i)
+
+    # 4. Assign remaining columns as numerical
+    num_col_idx = [i for i in range(len(columns)) if i != target_idx and i not in cat_col_idx]
+
+    info['num_col_idx'] = num_col_idx
+    info['cat_col_idx'] = cat_col_idx
+    info['target_col_idx'] = [target_idx]
+
+    with open(f'{INFO_PATH}/fintech.json', 'w') as file:
+        json.dump(info, file, indent=4)
+        
+# ====================================================
 
 def get_column_name_mapping(data_df, num_col_idx, cat_col_idx, target_col_idx, column_names = None):
     
@@ -176,8 +207,10 @@ def process_data(name):
         preprocess_news()
     elif name == 'beijing':
         preprocess_beijing()
-    elif name in ['heloc', 'fintech']:
-        preprocess_heloc_fintech(name)
+    elif name == 'heloc':
+        preprocess_heloc()
+    elif name == 'fintech':
+        preprocess_fintech()
 
     with open(f'{INFO_PATH}/{name}.json', 'r') as f:
         info = json.load(f)
@@ -281,7 +314,7 @@ def process_data(name):
     X_cat_test = test_df[cat_columns].to_numpy()
     y_test = test_df[target_columns].to_numpy()
  
-    save_dir = f'../data/{name}/Data_Tabddpm'
+    save_dir = f'../data/{name}/Tabsyn'
     os.makedirs(save_dir, exist_ok=True)
     
     np.save(f'{save_dir}/X_num_train.npy', X_num_train)

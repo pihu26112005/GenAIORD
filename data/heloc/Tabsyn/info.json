@@ -94,8 +94,8 @@
             2
         ]
     },
-    "train_num": 2754,
-    "test_num": 306,
+    "train_num": 4027,
+    "test_num": 448,
     "idx_mapping": {
         "0": 0,
         "1": 1,

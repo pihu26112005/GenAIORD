@@ -3,9 +3,9 @@
     "task_type": "binclass",
     "n_num_features": 23,
     "n_cat_features": 0,
-    "train_size": 2478,
-    "val_size": 276,
-    "test_size": 306,
+    "train_size": 3624,
+    "val_size": 403,
+    "test_size": 448,
     "cat_cardinalities": [],
     "idx_name_mapping": {
         "0": "ExternalRiskEstimate",
