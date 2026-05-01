@@ -2,19 +2,20 @@ import sys
 import os
 import pandas as pd
 import datetime as dt
+import argparse
 from sklearn.preprocessing import OrdinalEncoder
 
 # Import from your modules
-from utility_metrics import calculate_utility
+from utility_metrics import calculate_utility, calculate_sdmetrics
 from fidelity_metrics import calculate_fidelity
 from privacy_metrics import calculate_privacy
 
 # =====================================================================
 # ⚙️ CONFIGURATION HUB - EDIT THESE BEFORE RUNNING FOR A NEW DATASET
 # =====================================================================
-TARGET_DATASET = 'fintech'       # Options: 'adult', 'heloc', 'fintech'
-TARGET_COLUMN = 'is_referred'          # Options: 'income', 'RiskPerformance', 'is_referred' (Change if needed)
-GAMMAS = ['0.75', '0.8', '0.85', '0.7', '0.9', '0.95'] # Add your specific gamma tags
+# TARGET_DATASET = 'fintech'       # Options: 'adult', 'heloc', 'fintech'
+# TARGET_COLUMN = 'churn'          # Options: 'income', 'RiskPerformance', 'churn' (Change if needed)
+# GAMMAS = ['0.7', '0.75', '0.8', '0.85', '0.9', '0.95'] # Add your specific gamma tags
 # =====================================================================
 
 def evaluate_strategy(model_name, strat_id, train_augmented, test_real, target_col):
@@ -38,6 +39,10 @@ def evaluate_strategy(model_name, strat_id, train_augmented, test_real, target_c
             train_aug[col] = train_aug[col].fillna(med)
             test_r[col] = test_r[col].fillna(med)
     # --------------------------------------------------------------------
+    
+    # --- 2. RUN SDMETRICS HERE ---
+    # Run this BEFORE Ordinal Encoding so SDMetrics knows what columns are categoricals
+    sdmetrics = calculate_sdmetrics(train_aug, test_r, target_col)
 
     # --- FIX 1: Encode String/Object Columns for XGBoost ---
     # Find all columns that are objects (strings) and convert them to numeric labels
@@ -64,6 +69,7 @@ def evaluate_strategy(model_name, strat_id, train_augmented, test_real, target_c
     
     result = {"Model": model_name, "Strat": strat_id}
     result.update(utility)
+    result.update(sdmetrics)  # NEW: SDMetrics utility
     result.update(fidelity)
     result.update(privacy)
     
@@ -121,9 +127,14 @@ def evaluate_model_suite(model_name, min_path, maj_path, real_majority, real_min
         
     return results
 
-def main():
+def main(TARGET_DATASET, TARGET_COLUMN, gamma_start, gamma_end, gamma_step):
     print(f"\n{'='*50}\nEvaluating Dataset: {TARGET_DATASET.upper()}\n{'='*50}")
     base_path = f"../../data/{TARGET_DATASET}" 
+
+    # Generate gamma values dynamically
+    num_steps = int(round((gamma_end - gamma_start) / gamma_step)) + 1
+    GAMMAS = [f"{(gamma_start + i * gamma_step):.2f}" for i in range(num_steps)]
+    print(f"Evaluating the following Gammas: {GAMMAS}")
     
     try:
         test_df = pd.read_csv(f'{base_path}/test_orig.csv')
@@ -172,8 +183,12 @@ def main():
     os.makedirs(results_dir, exist_ok=True)
     timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # 3. Evaluate CFG for each Gamma and save distinct files
-    print("\n--- Phase 2: Evaluating CFG Models & Saving Reports ---")
+    # Initialize master list with baseline results
+    all_results = []
+    all_results.extend(baseline_results)
+
+    # 3. Evaluate CFG for each Gamma
+    print("\n--- Phase 2: Evaluating CFG Models ---")
     for gamma in GAMMAS:
         model_name = f"Proposed_CFG_Gamma_{gamma}"
         print(f"\n  [ Proposed ] {model_name}")
@@ -183,15 +198,32 @@ def main():
         
         cfg_results = evaluate_model_suite(model_name, cfg_min_path, cfg_maj_path, real_majority, real_minority, real_C00, test_df, TARGET_COLUMN, N_maj, N_def, N_01, expected_cols)
         
-        final_report_data = baseline_results + cfg_results
-        
-        if final_report_data:
-            report_df = pd.DataFrame(final_report_data)
-            out_filename = f"{results_dir}/{timestamp}_eval_gamma{gamma}.csv"
-            report_df.to_csv(out_filename, index=False)
-            print(f"    [+] Saved report: {out_filename}")
+        # Add these specific gamma results to our master list
+        all_results.extend(cfg_results)
 
-    print(f"\n[SUCCESS] Completed evaluations for {TARGET_DATASET.upper()}. All files saved to {results_dir}/")
+    # 4. Save ONE combined report
+    print("\n--- Phase 3: Saving Combined Report ---")
+    if all_results:
+        report_df = pd.DataFrame(all_results)
+        out_filename = f"{results_dir}/{timestamp}_eval_combined_{TARGET_DATASET}.csv"
+        report_df.to_csv(out_filename, index=False)
+        print(f"    [+] Saved COMPLETE combined report to: {out_filename}")
+
+    print(f"\n[SUCCESS] Completed evaluations for {TARGET_DATASET.upper()}.")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Evaluate synthetic datasets with various gammas.")
+    
+    # Required arguments
+    parser.add_argument("--dataset", type=str, required=True, help="Target dataset (e.g., heloc, fintech)")
+    parser.add_argument("--target_col", type=str, required=True, help="Target column name (e.g., RiskPerformance, churn)")
+    
+    # Optional arguments with your requested defaults
+    parser.add_argument("--gamma_start", type=float, default=0.6, help="Starting gamma value (default: 0.6)")
+    parser.add_argument("--gamma_end", type=float, default=1.2, help="Ending gamma value (default: 1.2)")
+    parser.add_argument("--gamma_step", type=float, default=0.02, help="Step size for gammas (default: 0.02)")
+
+    args = parser.parse_args()
+    
+    # Pass arguments into main
+    main(args.dataset, args.target_col, args.gamma_start, args.gamma_end, args.gamma_step)
