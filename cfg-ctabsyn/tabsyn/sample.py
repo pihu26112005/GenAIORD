@@ -18,6 +18,7 @@ def main(args):
     save_path = args.save_path
     cond_val = args.condition_by
     n_classes = args.n_classes
+    gamma_given = args.gamma
 
     #####
     # if cond_val == 0 , one_hot = 1,0,0
@@ -48,7 +49,7 @@ def main(args):
     # gamma_maj = 1.1
     # gamma_min = 0.9
     # cfg_denoiser = AdvancedCFGWrapper(model.denoise_fn_D, gamma_maj, gamma_min)
-    gamma = 0.95
+    gamma = gamma_given
     cfg_denoiser = CFGWrapper(model.denoise_fn_D, gamma)
     # ====================================
 
@@ -92,6 +93,7 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=int, default=0, help='GPU index.')
     parser.add_argument('--epoch', type=int, default=None, help='Epoch.')
     parser.add_argument('--steps', type=int, default=None, help='Number of function evaluations.')
+    parser.add_argument('--gamma', type=float, default=0.9, help='gamma for cfg sampling.')
 
     args = parser.parse_args()
 
